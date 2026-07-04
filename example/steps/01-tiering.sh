@@ -14,9 +14,13 @@ say "3. Worker tiers everything behind the high-water mark"
 wait_for "cut-line advanced to 200 (p0+p1 tiered)" \
     "SELECT tier_key_hi FROM modak.cutline WHERE table_id = 'public.events'::regclass::oid::bigint" \
     "200"
+# Premake adds future partitions and transparent writes adds the spill, so
+# check the two tiered partitions specifically rather than the child count.
 wait_for "tiered partitions physically dropped" \
-    "SELECT count(*) FROM pg_inherits WHERE inhparent = 'public.events'::regclass" \
-    "1"
+    "SELECT count(*) FROM pg_inherits JOIN pg_class c ON c.oid = inhrelid \
+     WHERE inhparent = 'public.events'::regclass \
+     AND c.relname IN ('events_p0', 'events_p1')" \
+    "0"
 
 echo "   plain SELECT still sees ALL rows (transparent two-tier read):"
 $PSQL -c "SELECT * FROM public.events ORDER BY id"

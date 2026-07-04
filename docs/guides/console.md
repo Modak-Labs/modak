@@ -8,6 +8,8 @@ and CodeMirror bundled as WebJars, served from the jar.
 
 ## Overview
 
+![Console overview](../assets/console-overview.png)
+
 The fleet at a glance: per-table mode, cut-line, mirror lag, delta backlog,
 read pins, partition states, and in-flight initial copies, refreshed live.
 
@@ -22,6 +24,8 @@ journal (tiering/compaction/maintenance phases), and replication slot detail
 for mirrored tables.
 
 ## SQL playground
+
+![SQL playground](../assets/console-playground.png)
 
 A schema browser, a CodeMirror SQL editor with snippets and history, and a
 results grid. Statements run with transparent reads on, so tiered tables read

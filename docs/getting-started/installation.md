@@ -53,6 +53,10 @@ SELECT duckdb.install_extension('iceberg');
 -- DuckDB parallel heap scans deadlock against PG parallel workers on mixed
 -- plans, so keep them off.
 ALTER SYSTEM SET duckdb.max_workers_per_postgres_scan = 0;
+
+-- Transparent UPDATE/DELETE of cold rows runs the lake scan as a nested
+-- statement, which pg_duckdb gates behind this setting.
+ALTER SYSTEM SET duckdb.unsafe_allow_execution_inside_functions = 'on';
 ```
 
 Give DuckDB credentials for the warehouse, so `iceberg_scan()` can read

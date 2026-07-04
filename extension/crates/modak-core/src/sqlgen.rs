@@ -84,10 +84,62 @@ pub fn render_scan(plan: &QueryPlan, meta: &TableMeta) -> Result<String> {
     ))
 }
 
+/// The pinned lake scan as one SELECT over `duckdb.query()`. S is pinned by
+/// the immutable metadata_location, `lake_snapshot_id` only orders. The tier
+/// predicate stays outside the DuckDB literal until pg_duckdb picks up the
+/// duckdb-iceberg#940 fix (DuckDB >= 1.5.2).
+pub fn lake_base_select(meta: &TableMeta) -> String {
+    let inner_duckdb_sql = format!(
+        "SELECT {cols} FROM iceberg_scan({path})",
+        cols = column_list(meta),
+        path = lit(&meta.lake_metadata_location),
+    );
+    let base_projection = meta
+        .columns
+        .iter()
+        .map(|c| format!("r[{}]::{} AS {}", lit(&c.name), c.sql_type, ident(&c.name)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "SELECT {base_projection}\nFROM duckdb.query({inner_lit}) r",
+        inner_lit = lit(&inner_duckdb_sql),
+    )
+}
+
 /// The cold half alone, the pinned lake scan merged with the `modak.delta`
 /// overlay and bounded to `tier_key < T`. The read path unions it with the
-/// hot scan and the DML rewrite uses it as its source of cold rows.
+/// hot scan.
 pub fn render_cold_branch(t: crate::domain::TierKey, meta: &TableMeta) -> Result<String> {
+    render_cold(t, meta, &lake_base_select(meta))
+}
+
+/// The same cold half sourced from `modak_lake_rows()` instead of a direct
+/// scan. The DML rewrite needs this, since pg_duckdb refuses any statement
+/// where a DuckDB scan feeds a Postgres write.
+pub fn render_cold_branch_spooled(t: crate::domain::TierKey, meta: &TableMeta) -> Result<String> {
+    let projection = meta
+        .columns
+        .iter()
+        .map(|c| {
+            format!(
+                "(j ->> {})::{} AS {}",
+                lit(&c.name),
+                c.sql_type,
+                ident(&c.name)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let base = format!(
+        "SELECT {projection}\nFROM modak_lake_rows({table_id}, {t}, {path}) j",
+        table_id = meta.table_id.0,
+        t = t.0,
+        path = lit(&meta.lake_metadata_location),
+    );
+    render_cold(t, meta, &base)
+}
+
+fn render_cold(t: crate::domain::TierKey, meta: &TableMeta, base: &str) -> Result<String> {
     if meta.columns.is_empty() {
         return Err(ModakError::Planning(format!(
             "table {:?} has no columns",
@@ -103,21 +155,6 @@ pub fn render_cold_branch(t: crate::domain::TierKey, meta: &TableMeta) -> Result
 
     let table_id = meta.table_id.0;
     let col_list = column_list(meta);
-
-    // S is pinned by the immutable metadata_location, lake_snapshot_id only
-    // orders. The tier predicate stays outside the DuckDB literal until
-    // pg_duckdb picks up the duckdb-iceberg#940 fix (DuckDB >= 1.5.2).
-    let inner_duckdb_sql = format!(
-        "SELECT {cols} FROM iceberg_scan({path})",
-        cols = col_list,
-        path = lit(&meta.lake_metadata_location),
-    );
-    let base_projection = meta
-        .columns
-        .iter()
-        .map(|c| format!("r[{}]::{} AS {}", lit(&c.name), c.sql_type, ident(&c.name)))
-        .collect::<Vec<_>>()
-        .join(", ");
 
     let delta_projection = meta
         .columns
@@ -141,8 +178,7 @@ pub fn render_cold_branch(t: crate::domain::TierKey, meta: &TableMeta) -> Result
     Ok(format!(
         "SELECT {col_list} FROM (\n\
            SELECT {col_list} FROM (\n\
-             SELECT {base_projection}\n\
-             FROM duckdb.query({inner_lit}) r\n\
+             {base}\n\
            ) b\n\
            WHERE NOT EXISTS (\n\
              SELECT 1 FROM modak.delta d\n\
@@ -154,7 +190,6 @@ pub fn render_cold_branch(t: crate::domain::TierKey, meta: &TableMeta) -> Result
            WHERE d.table_id = {table_id} AND d.op = 0\n\
          ) cold\n\
          WHERE {tier} < {t}",
-        inner_lit = lit(&inner_duckdb_sql),
         t = t.0,
     ))
 }

@@ -1,10 +1,15 @@
 # Modak
 
-Modak makes a Postgres table and an Apache Iceberg table behave as one table.
+Tier-aware data federation between Postgres and Apache Iceberg. Modak knows
+which tier holds what, and every query stays real time and consistent.
 
 Recent rows live in Postgres, history lives in the lake, and plain SQL works
 against the whole timeline: `SELECT`, `INSERT`, `UPDATE`, and `DELETE` reach
-any row, wherever it lives, with transactional-grade consistency.
+any row, wherever it lives.
+
+<video controls muted playsinline style="width: 100%; border-radius: 8px;">
+  <source src="assets/modak-console.mp4" type="video/mp4">
+</video>
 
 !!! note "Status: beta"
     Modak has not cut a stable release. Interfaces can still change. See the

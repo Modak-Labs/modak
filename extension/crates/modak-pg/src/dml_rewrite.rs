@@ -12,6 +12,7 @@ use modak_core::ports::{CutlineReader, ReadPinRepository};
 use pgrx::prelude::*;
 
 use crate::catalog::PgCatalog;
+use crate::delta::ident;
 use crate::dml::transparent_writes_on;
 use crate::hook;
 use crate::pin::PgReadPins;
@@ -19,6 +20,73 @@ use crate::planner::table_meta;
 
 /// Both halves range over this alias, so deparsed fragments bind in each.
 const ALIAS: &CStr = c"m";
+
+/// Spools the pinned lake scan through a temp table and hands the rows back
+/// as jsonb. The rewritten UPDATE/DELETE's cold half reads from this instead
+/// of scanning the lake inline, since pg_duckdb refuses any plan where a
+/// DuckDB scan feeds a Postgres write. Same transaction, same atomicity.
+#[pg_extern]
+fn modak_lake_rows(
+    table: pg_sys::Oid,
+    tier_key_lt: i64,
+    metadata_location: &str,
+) -> SetOfIterator<'static, pgrx::JsonB> {
+    let t = TableId(u32::from(table));
+    let mut meta = or_error(table_meta(t));
+    // The caller pinned S when it planned, so scan that snapshot, not the current one.
+    meta.lake_metadata_location = metadata_location.to_string();
+    require_nested_duckdb();
+
+    let base = modak_core::sqlgen::lake_base_select(&meta);
+    let tier = ident(&meta.tier_key_col);
+    let rows = Spi::connect_mut(|client| {
+        client.update(
+            &format!(
+                "CREATE TEMP TABLE __modak_lake_spool AS \
+                 SELECT * FROM (\n{base}\n) b WHERE b.{tier} < {tier_key_lt}"
+            ),
+            None,
+            &[],
+        )?;
+        let spooled = client.select(
+            "SELECT to_jsonb(s) FROM pg_temp.__modak_lake_spool s",
+            None,
+            &[],
+        )?;
+        let mut out = Vec::with_capacity(spooled.len());
+        for row in spooled {
+            if let Some(j) = row.get::<pgrx::JsonB>(1)? {
+                out.push(j);
+            }
+        }
+        client.update("DROP TABLE pg_temp.__modak_lake_spool", None, &[])?;
+        Ok::<_, pgrx::spi::SpiError>(out)
+    });
+    match rows {
+        Ok(rows) => SetOfIterator::new(rows.into_iter()),
+        Err(e) => error!("modak: lake spool failed: {e}"),
+    }
+}
+
+/// pg_duckdb only allows DuckDB execution below the top-level statement when
+/// this GUC is on. An absent GUC means pg_duckdb itself is absent (tests).
+fn require_nested_duckdb() {
+    let name = c"duckdb.unsafe_allow_execution_inside_functions";
+    let value = unsafe {
+        let p = pg_sys::GetConfigOption(name.as_ptr(), true, false);
+        (!p.is_null()).then(|| CStr::from_ptr(p).to_string_lossy().into_owned())
+    };
+    if let Some(v) = value {
+        if v != "on" && v != "true" {
+            error!(
+                "modak: transparent UPDATE/DELETE of cold rows needs \
+                 duckdb.unsafe_allow_execution_inside_functions = on \
+                 (the cold half runs the lake scan as a nested statement); \
+                 set it in postgresql.conf, or use modak_upsert()/modak_delete()"
+            );
+        }
+    }
+}
 
 /// Returns the replacement query, or `None` to leave the statement untouched.
 /// Statements the split cannot honor error out loudly instead.

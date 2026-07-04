@@ -3,7 +3,7 @@
 //! whose cold half writes `modak.delta` through a data-modifying CTE.
 
 use crate::domain::TierKey;
-use crate::sqlgen::{pk_sql_expr, render_cold_branch, TableMeta};
+use crate::sqlgen::{pk_sql_expr, render_cold_branch_spooled, TableMeta};
 use crate::{ModakError, Result};
 
 /// A comparison of the tier-key column against a constant.
@@ -138,7 +138,7 @@ struct Halves {
 }
 
 fn halves(meta: &TableMeta, t: TierKey, frag: &DmlFragments) -> Result<Halves> {
-    let cold_branch = render_cold_branch(t, meta)?;
+    let cold_branch = render_cold_branch_spooled(t, meta)?;
     let tier = ident(&meta.tier_key_col);
     // The always-true gate references the CTE so the delta write runs during
     // ExecutorRun, where the command tag still sees the tallied cold rows. An
@@ -483,6 +483,29 @@ mod tests {
             ),
             "{sql}"
         );
+    }
+
+    #[test]
+    fn dml_sources_cold_rows_through_the_spool_not_the_direct_scan() {
+        let frag = DmlFragments {
+            where_sql: Some("id = 3".into()),
+            set_items: vec![("val".into(), "'y'".into())],
+            returning: vec![],
+        };
+        let update = render_update(&meta(), T, None, &frag).unwrap();
+        let delete = render_delete(&meta(), T, None, &frag).unwrap();
+        for sql in [&update, &delete] {
+            assert!(
+                sql.contains(
+                    "modak_lake_rows(90001, 100, '/wh/events/metadata/00002-abc.metadata.json')"
+                ),
+                "cold half spools the lake scan (pg_duckdb cannot feed a write):\n{sql}"
+            );
+            assert!(
+                !sql.contains("duckdb.query"),
+                "no direct DuckDB scan inside a modifying statement:\n{sql}"
+            );
+        }
     }
 
     #[test]

@@ -51,5 +51,5 @@ JOIN=$($PSQL -tA -c \
     "SELECT string_agg(e.id::text || '|' || coalesce(e.val,'') || '|' || v.vin, E'\n' ORDER BY e.id)
        FROM public.events e JOIN public.vehicles v ON v.id = e.id")
 echo "$JOIN"
-assert_eq "cross-mode join" "2|b|VIN-002
-4|d|VIN-004" "$JOIN"
+# events reflects step 6c: id=2 updated to B?, id=4 deleted.
+assert_eq "cross-mode join" "2|B?|VIN-002" "$JOIN"

@@ -41,3 +41,22 @@ RESULT_TRANSPARENT=$($PSQL -tA -c \
     "SELECT string_agg(id::text || '|' || event_time::text || '|' || coalesce(val,''), E'\n' ORDER BY id) FROM public.events")
 echo "$RESULT_TRANSPARENT"
 assert_eq "transparent read" "$EXPECTED" "$RESULT_TRANSPARENT"
+
+say "6c. Plain UPDATE and DELETE on cold rows (planner rewrite, real lake scan)"
+# id=2 and id=4 are cold, so the rewrite spools the lake scan and writes the
+# delta. Delta rows fold within a sweep, so assert on read effects instead.
+EXPECTED="2|20|B?
+3|110|C!
+5|250|e
+6|260|f"
+$PSQL -c "UPDATE public.events SET val = 'B?' WHERE id = 2"
+$PSQL -c "DELETE FROM public.events WHERE id = 4"
+RESULT_DML=$($PSQL -tA -c \
+    "SELECT string_agg(id::text || '|' || event_time::text || '|' || coalesce(val,''), E'\n' ORDER BY id) FROM public.events")
+assert_eq "transparent read reflects the cold DML immediately" "$EXPECTED" "$RESULT_DML"
+
+say "6d. Compaction folds the cold DML into Iceberg"
+wait_for "cold DML folded and cleared" "SELECT count(*) FROM modak.delta" "0"
+RESULT_FOLDED=$($PSQL -tA -c \
+    "SELECT string_agg(id::text || '|' || event_time::text || '|' || coalesce(val,''), E'\n' ORDER BY id) FROM public.events")
+assert_eq "read after fold matches" "$EXPECTED" "$RESULT_FOLDED"
