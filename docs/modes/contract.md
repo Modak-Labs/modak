@@ -18,11 +18,11 @@ Every cell is a supported path today.
 | Operation | Tiered | Tiered + keep-heap | Fully mirrored | Mirrored + heap retention |
 |---|---|---|---|---|
 | Insert, recent | plain `INSERT` | plain `INSERT` | plain `INSERT` | plain `INSERT` |
-| Insert, historical | plain `INSERT` (extension) or `modak_upsert()` or a connector, to the delta | plain `INSERT`, trigger-mirrored to the delta | plain `INSERT` | same as tiered |
+| Insert, historical | plain `INSERT` or `modak_upsert()` (both extension) or a connector, to the delta | plain `INSERT`, trigger-mirrored to the delta | plain `INSERT` | same as tiered |
 | Update, recent | plain `UPDATE` | plain `UPDATE` | plain `UPDATE` | plain `UPDATE` |
-| Update, historical | plain `UPDATE` (extension) or `modak_upsert()` or a connector, to the delta | plain `UPDATE`, trigger-mirrored | plain `UPDATE` | same as tiered |
+| Update, historical | plain `UPDATE` or `modak_upsert()` (both extension) or a connector, to the delta | plain `UPDATE`, trigger-mirrored | plain `UPDATE` | same as tiered |
 | Delete, recent | plain `DELETE` | plain `DELETE` | plain `DELETE` | plain `DELETE` |
-| Delete, historical | plain `DELETE` (extension) or `modak_delete()` or a connector, tombstone to the delta | plain `DELETE`, trigger-mirrored | plain `DELETE` | same as tiered |
+| Delete, historical | plain `DELETE` or `modak_delete()` (both extension) or a connector, tombstone to the delta | plain `DELETE`, trigger-mirrored | plain `DELETE` | same as tiered |
 | Bulk historical load | `modak-worker ingest` (Parquet or records), upsert semantics | plain `COPY` to the heap (the trigger mirrors row by row) | plain `COPY` | `modak-worker ingest` |
 | Continuous labeled batches | [Stream Load](../ingestion/stream-load.md), routed per row, exactly once per label | Stream Load for recent rows (historical rows land in the delta only, not the heap) | Stream Load, all to the heap | Stream Load |
 | Read | one seam-split view | one seam-split view | heap, or opt-in hybrid | one seam-split view |

@@ -1,8 +1,8 @@
 # Modak
 
-Tier-aware data federation between Postgres and Apache Iceberg. Modak knows which tier holds what, and every query stays real time and consistent.
+A fast, transparent and cost-effective way to tier Postgres data into Apache Iceberg. Recent rows stay hot in Postgres, history moves into the lake, and your application keeps running plain SQL against one table as if nothing moved.
 
-Recent rows live in Postgres, history lives in the lake, and plain SQL works against the whole timeline: `SELECT`, `INSERT`, `UPDATE`, and `DELETE` reach any row, wherever it lives.
+Writes stay ACID wherever the row lives, every read is one point-in-time view across both tiers, and failure degrades to lag, never to a wrong answer. With the extension installed, plain SQL reads and writes both tiers in place, and where it cannot be (managed Postgres like RDS), tiering still runs and [connectors](integrations/index.md) cover the cross-tier side.
 
 <video controls muted playsinline style="width: 100%; border-radius: 8px;">
   <source src="https://github.com/user-attachments/assets/dc666d8b-ade7-4c56-b5a3-f4bf889d8806" type="video/mp4">

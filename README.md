@@ -1,14 +1,16 @@
 # Modak
 
-Tier-aware data federation between Postgres and Apache Iceberg. Modak knows which tier holds what, and every query stays real time and consistent.
+Modak is a fast, transparent and cost-effective way to tier Postgres data into Apache Iceberg. If Postgres sits at the heart of your stack and its largest tables keep growing (events, telemetry, orders, time series), Modak keeps the recent rows hot in Postgres, moves history into the lake, and your application keeps running plain SQL against one table as if nothing moved.
 
 > **Status: beta.** No stable release yet, interfaces can still change. See [production deployment](https://modak-labs.github.io/modak/operations/production/) before running it anywhere that matters.
 
-Recent rows live in Postgres, history lives in Iceberg, and plain SQL works against the whole timeline: `SELECT`, `INSERT`, `UPDATE`, and `DELETE` reach any row, wherever it lives. Both tiers stay real, independently usable systems: an unforked Postgres you run OLTP on, and a standard Iceberg warehouse any engine can read. Modak owns only the seam between them, and the [protocol](https://modak-labs.github.io/modak/reference/seam/) is public.
+Tables run in two modes: **tiered**, where Postgres keeps only the recent partitions and history lives in Iceberg, and **mirrored**, where Postgres keeps everything while CDC trails every change into the lake. With the postgres extension, plain SQL reads and writes both tiers in place, and where it cannot be (managed Postgres like RDS), tiering still runs and [connectors](https://modak-labs.github.io/modak/integrations/) cover the cross-tier side.
+
+It is built on guarantees rather than best effort: writes stay ACID wherever the row lives, every read is one point-in-time view across both tiers, and failure degrades to lag, never to a wrong answer.
 
 https://github.com/user-attachments/assets/dc666d8b-ade7-4c56-b5a3-f4bf889d8806
 
-Tables run **tiered** (Postgres keeps only the recent partitions) or **mirrored** (Postgres keeps everything while CDC trails it into the lake). [Choosing a mode](https://modak-labs.github.io/modak/modes/choosing/) walks the decision, and [the contract](https://modak-labs.github.io/modak/modes/contract/) states exactly what each mode supports.
+Modak owns only the seam between the tiers, and the [protocol](https://modak-labs.github.io/modak/reference/seam/) is public. [Choosing a mode](https://modak-labs.github.io/modak/modes/choosing/) walks the decision, and [the contract](https://modak-labs.github.io/modak/modes/contract/) states exactly what each mode supports.
 
 ## Installation
 

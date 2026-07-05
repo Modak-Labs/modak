@@ -2,7 +2,7 @@
 
 ## Correcting cold rows
 
-Hot rows take plain DML. For rows that only the lake holds, past the cut-line of a tiered table or below the drop boundary of a mirrored table with heap retention, plain `INSERT`, `UPDATE`, and `DELETE` also just work when the extension is installed: inserts route through the spill partition, updates and deletes through a statement rewrite whose cold half is evaluated against the pinned lake scan, all writing the delta overlay with upsert semantics (see the [SQL reference](../reference/sql.md)). The routed functions do the same thing one record at a time, for callers without the extension's hooks:
+Hot rows take plain DML. For rows that only the lake holds, past the cut-line of a tiered table or below the drop boundary of a mirrored table with heap retention, plain `INSERT`, `UPDATE`, and `DELETE` also just work when the extension is installed: inserts route through the spill partition, updates and deletes through a statement rewrite whose cold half is evaluated against the pinned lake scan, all writing the delta overlay with upsert semantics (see the [SQL reference](../reference/sql.md)). The routed functions do the same thing one record at a time, for sessions running with transparent writes off or statement shapes the rewrite rejects:
 
 ```sql
 -- Upsert: full row image, routed by its tier key.

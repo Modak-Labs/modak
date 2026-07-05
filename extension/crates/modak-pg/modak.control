@@ -1,4 +1,4 @@
-comment = 'Modak: tier-aware data federation between Postgres and Apache Iceberg'
+comment = 'Modak: fast, transparent and cost-effective data tiering between Postgres and Apache Iceberg'
 default_version = '@CARGO_VERSION@'
 module_pathname = '$libdir/modak'
 relocatable = false
